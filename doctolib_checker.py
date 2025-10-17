@@ -4,10 +4,11 @@ import time
 import datetime
 import http.client
 import urllib.request
-import pathlib
+import yaml
 
-# load config.json
-config = json.load(open(f"{pathlib.Path(__file__).parent.resolve()}/config.json"))
+# load config.yaml
+with open(f"{pathlib.Path(__file__).parent.resolve()}/config.yaml", "r") as file:
+    config = yaml.safe_load(file)
 
 # yyyy-mm-dd
 limit_date = config["limit_date"]
