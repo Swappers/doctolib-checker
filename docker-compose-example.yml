@@ -1,0 +1,9 @@
+version: "3.9"
+
+services:
+  doctolib-checker:
+    image: ghcr.io/swappers/doctolib-checker:latest
+    container_name: doctolib-checker
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
