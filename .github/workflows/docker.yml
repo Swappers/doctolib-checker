@@ -32,4 +32,4 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/swappers/doctolib-checker:latest
