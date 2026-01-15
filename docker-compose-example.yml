@@ -3,7 +3,16 @@ version: "3.9"
 services:
   doctolib-checker:
     image: ghcr.io/swappers/doctolib-checker:latest
-    container_name: doctolib-checker
-    volumes:
-      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      RUN_IN_LOOP: "false"
+      INTERVAL_IN_SECONDS: "60"
+      ALIVE_CHECK: "true"
+      HOUR_OF_ALIVE_CHECK: "15"
+      START_DATE: "2025-01-01"
+      LIMIT_DATE: "2025-03-01"
+      LIMIT: "15"
+      URL: "https://www.doctolib.fr/availabilities.json?agenda_ids=xxx&practice_ids=yyy&visit_motive_ids=zzz"
+      # PUSHOVER_API_TOKEN: "your_api_token"
+      # PUSHOVER_USER_KEY: "your_user_key"
+      
     restart: unless-stopped
