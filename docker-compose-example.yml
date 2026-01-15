@@ -3,16 +3,53 @@ version: "3.9"
 services:
   doctolib-checker:
     image: ghcr.io/swappers/doctolib-checker:latest
+    container_name: doctolib-checker
     environment:
-      RUN_IN_LOOP: "false"
+      # --------------------
+      # Runtime
+      # --------------------
+      RUN_IN_LOOP: "true"
       INTERVAL_IN_SECONDS: "60"
+
+      # --------------------
+      # Alive check
+      # --------------------
       ALIVE_CHECK: "true"
       HOUR_OF_ALIVE_CHECK: "15"
+
+      # --------------------
+      # Date limits
+      # --------------------
       START_DATE: "2025-01-01"
       LIMIT_DATE: "2025-03-01"
       LIMIT: "15"
-      URL: "https://www.doctolib.fr/availabilities.json?agenda_ids=xxx&practice_ids=yyy&visit_motive_ids=zzz"
+
+      # --------------------
+      # ONE of the two below
+      # --------------------
+
+      # Option A (RECOMMENDED): direct API URL (no Playwright at runtime)
+      # URL: "https://www.doctolib.fr/availabilities.json?agenda_ids=XXX&practice_ids=YYY&visit_motive_ids=ZZZ"
+
+      # Option B: frontend URL → discovery via Playwright (heavier)
+      FRONTEND_URL: "https://www.doctolib.fr/ophtalmologue/paris/xxx/booking/availabilities?placeId=practice-YYYY&motiveIds[]=ZZZ"
+
+      # --------------------
+      # Discovery settings (only used if FRONTEND_URL is set)
+      # --------------------
+      DISCOVERY_HEADLESS: "true"
+      DISCOVERY_TIMEOUT_MS: "30000"
+      DISCOVERY_WAIT_AFTER_LOAD_MS: "3000"
+
+      # --------------------
+      # Logging
+      # --------------------
+      LOG_LEVEL: "INFO"
+
+      # --------------------
+      # Optional: Pushover
+      # --------------------
       # PUSHOVER_API_TOKEN: "your_api_token"
       # PUSHOVER_USER_KEY: "your_user_key"
-      
+
     restart: unless-stopped
