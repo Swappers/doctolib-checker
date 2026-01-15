@@ -1,30 +1,68 @@
 import datetime
 import http.client
 import json
-import pathlib
 import time
-import urllib
 import urllib.request
+import urllib.parse
+import os
+import sys
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-import yaml
+def require_env(name, cast=str):
+    value = os.getenv(name)
+    if value is None:
+        print(f"ERROR: missing required env var {name}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        return cast(value)
+    except ValueError:
+        print(f"ERROR: invalid value for {name}: {value}", file=sys.stderr)
+        sys.exit(1)
 
-# load config.yaml
-with open(f"{pathlib.Path(__file__).parent.resolve()}/config.yaml", "r") as file:
-    config = yaml.safe_load(file)
+def env_bool(value: str) -> bool:
+    return value.lower() in ("1", "true", "yes")
 
-# yyyy-mm-dd
-limit_date = config["limit_date"]
-start_date = config["start_date"]
+def sanitize_doctolib_url(raw_url: str) -> str:
+    parsed = urlparse(raw_url)
+    query = parse_qs(parsed.query)
 
-# max number of days in advance
-limit = config["limit"]
+    # paramètres interdits : toujours ignorés
+    for forbidden in ("start_date", "end_date", "limit"):
+        query.pop(forbidden, None)
 
-# the url to fetch the data from. The start_date and limit will be replaced by the actual values
-url = config["url"] % {"start_date": start_date, "limit": limit}
+    clean_query = urlencode(query, doseq=True)
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            "",
+            clean_query,
+            "",
+        )
+    )
+
+RUN_IN_LOOP = require_env("RUN_IN_LOOP", env_bool)
+INTERVAL_IN_SECONDS = require_env("INTERVAL_IN_SECONDS", int)
+
+ALIVE_CHECK = require_env("ALIVE_CHECK", env_bool)
+HOUR_OF_ALIVE_CHECK = require_env("HOUR_OF_ALIVE_CHECK", int)
+
+START_DATE = require_env("START_DATE")
+LIMIT_DATE = require_env("LIMIT_DATE")
+LIMIT = require_env("LIMIT", int)
+
+URL = require_env("URL")
+
+PUSHOVER_API_TOKEN = os.getenv("PUSHOVER_API_TOKEN")
+PUSHOVER_USER_KEY = os.getenv("PUSHOVER_USER_KEY")
+PUSHOVER_ENABLED = PUSHOVER_API_TOKEN is not None and PUSHOVER_USER_KEY is not None
 
 
-def send_pushover_notification(message):
-    """Send a pushover notification"""
+def send_pushover_notification(message: str):
+    if not PUSHOVER_ENABLED:
+        return
 
     conn = http.client.HTTPSConnection("api.pushover.net:443")
     conn.request(
@@ -32,8 +70,8 @@ def send_pushover_notification(message):
         "/1/messages.json",
         urllib.parse.urlencode(
             {
-                "token": config["pushover_credentials"]["api_token"],
-                "user": config["pushover_credentials"]["user_key"],
+                "token": PUSHOVER_API_TOKEN,
+                "user": PUSHOVER_USER_KEY,
                 "message": message,
             }
         ),
@@ -41,78 +79,71 @@ def send_pushover_notification(message):
     )
     conn.getresponse()
 
-
 def get_closest_available_time_slot(json_data):
-    """Get the closest available time slot"""
-
-    availabilities = json_data["availabilities"]
-    closest_slot = ""
-
-    for slot in availabilities:
-        if slot["slots"] == []:
+    for slot in json_data.get("availabilities", []):
+        if not slot.get("slots"):
             continue
 
         if datetime.datetime.strptime(
             slot["date"][:10], "%Y-%m-%d"
-        ) <= datetime.datetime.strptime(limit_date, "%Y-%m-%d"):
-            closest_slot = slot["slots"][0]
-            break
+        ) <= datetime.datetime.strptime(LIMIT_DATE, "%Y-%m-%d"):
+            return slot["slots"][0]
 
-    return closest_slot
+    return ""
 
-
-def format_string_to_date(date):
-    """Get a proper date string
-    Input will be something like "2024-11-07T11:20:00.000+01:00"
-    Output will be something like "2024-11-07 11:20:00"
-    """
+def format_string_to_date(date: str) -> str:
+    # input: 2024-11-07T11:20:00.000+01:00
     return str(datetime.datetime.strptime(date[:-10], "%Y-%m-%dT%H:%M:%S"))
 
-
 def main():
-    print("Starting...")
+    print("Starting doctolib-checker")
+    print(f"Using URL: {URL}")
+    print(f"Limit date: {LIMIT_DATE}")
 
     while True:
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Magic Browser"})
-            con = urllib.request.urlopen(req)
-            json_data = json.loads(con.read())
+            req = urllib.request.Request(URL, headers={"User-Agent": "Magic Browser"})
+            with urllib.request.urlopen(req) as con:
+                json_data = json.loads(con.read())
 
-            # there is a free slot in the next <limit> days
-            if json_data["total"] > 0:
+            # slots available in next LIMIT days
+            if json_data.get("total", 0) > 0:
                 closest_slot = get_closest_available_time_slot(json_data)
-                if closest_slot != "":
+                if closest_slot:
                     send_pushover_notification(
-                        f"New appointment available on Doctolib within the next {limit} days! \nNumber of available appointments: {json_data['total']} \nEarliest appointment: {format_string_to_date(closest_slot)}"
+                        f"New appointment available within {LIMIT} days\n"
+                        f"Total: {json_data['total']}\n"
+                        f"Earliest: {format_string_to_date(closest_slot)}"
                     )
 
-            # if next available slot is before the limit date
-            elif datetime.datetime.strptime(
+            # next available slot before LIMIT_DATE
+            elif "next_slot" in json_data and datetime.datetime.strptime(
                 json_data["next_slot"][:10], "%Y-%m-%d"
-            ) <= datetime.datetime.strptime(limit_date, "%Y-%m-%d"):
+            ) <= datetime.datetime.strptime(LIMIT_DATE, "%Y-%m-%d"):
                 send_pushover_notification(
-                    f"New appointment available on Doctolib within your limit time! \nEarliest appointment: {format_string_to_date(json_data['next_slot'])}"
+                    f"New appointment available\n"
+                    f"Earliest: {format_string_to_date(json_data['next_slot'])}"
                 )
 
-            # send an alive message at <hour_of_alive_check> o'clock and minute 0 everyday if <alive_check> is True
+            # alive check
             if (
-                config["alive_check"]
-                and datetime.datetime.now().hour == config["hour_of_alive_check"]
+                ALIVE_CHECK
+                and datetime.datetime.now().hour == HOUR_OF_ALIVE_CHECK
                 and datetime.datetime.now().minute == 0
             ):
                 send_pushover_notification(
-                    f"Doctolib script is still running. \nLooking for appointments up to {limit_date}"
+                    f"Doctolib checker alive\nLimit date: {LIMIT_DATE}"
                 )
 
-            if config["run_in_loop"]:
-                time.sleep(config["interval_in_seconds"])
+            if RUN_IN_LOOP:
+                time.sleep(INTERVAL_IN_SECONDS)
             else:
                 break
 
         except Exception as e:
-            send_pushover_notification(
-                f"An error occured while running the Doctolib script: {e}"
-            )
+            send_pushover_notification(f"Doctolib checker error: {e}")
+            if not RUN_IN_LOOP:
+                raise
 
 
 if __name__ == "__main__":
