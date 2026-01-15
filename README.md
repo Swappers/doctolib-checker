@@ -1,4 +1,9 @@
-# doctolib-checker
+# doctolib-checker + Docker container
+
+This project is just a containerized version of a fork from [this repo](https://github.com/Schlaurens/doctolib-checker) all credits to [Schlaurens](https://github.com/Schlaurens).
+
+
+
 This little improvised python script is for anyone who books their doctor's appointment via [Doctolib](https://www.doctolib.de). Sometimes the next available appointment is several months away and you do not want to wait that long for your doctor's visit. But sometimes other patients cancel their appointments for various reasons and a free slot appears. This script automatically checks for these shortterm available appointments and notifies you on your pc/smartphone/tablet via [Pushover](https://pushover.net/) when there is a free slot before a specified date available. 
 
 # Setup
@@ -23,3 +28,10 @@ Furthermore, you will need to do some changes in the `config.yaml` for this scri
 - `pushover_credentials` are the credentials needed in order to send push notifications to your device in case a free appointment has been found. Take a look at the [Pushover API Documentation](https://pushover.net/api) to know what's what.
 
 That was the setup. It is not as complicated as it looks ;) Have fun!
+
+### Docker Compose example
+
+```bash
+cp docker-compose-example.yml docker-compose.yml
+docker compose up -d
+
